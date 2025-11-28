@@ -1,246 +1,225 @@
 # NEON - Neural Efficient Object Notation
 
-> The future of data serialization for AI
+> Token-efficient data serialization for AI/LLM applications
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](https://github.com/EwertonDaniel/-neon-neural-efficient-object-notation)
 
-## Why NEON?
+## What is NEON?
 
-NEON is a revolutionary data format that reimagines how we structure data for the AI era:
+NEON is a text-based data serialization format designed to minimize token count when sending structured data to Large Language Models (LLMs). It achieves **55-70% size reduction** compared to JSON for tabular data.
 
-```
-Comparison (1000 employees):
-┌─────────┬────────┬────────┬──────────┬──────────────┐
-│ Format  │ Size   │ Tokens │ LLM Cost │ Parse Speed  │
-├─────────┼────────┼────────┼──────────┼──────────────┤
-│ JSON    │ 187 KB │ 45,230 │ $0.90    │ 45ms         │
-│ YAML    │ 156 KB │ 38,150 │ $0.76    │ 52ms         │
-│ TOON    │  78 KB │ 18,920 │ $0.38    │ 28ms         │
-│ NEON    │  47 KB │ 11,350 │ $0.23    │ 15ms         │
-└─────────┴────────┴────────┴──────────┴──────────────┘
+## When to Use NEON
 
-NEON = 74% smaller than JSON, 40% smaller than TOON
-```
+**Use NEON when:**
+- Sending large datasets to LLM APIs (token cost reduction)
+- Streaming tabular data line-by-line
+- You control both encoder and decoder
+- Data is primarily uniform/tabular
+
+**Use JSON when:**
+- Universal compatibility is required
+- Working with existing ecosystems
+- Human editing is the primary concern
+- No performance constraints
+
+**Use TOON when:**
+- You need established, stable tooling
+- Broader ecosystem compatibility
+- Lossless round-trip is mandatory
 
 ## Quick Start
 
 ```typescript
-import { encode, decode } from 'neon-format'
+import { encode, decode } from 'neon-format';
 
 const data = {
   users: [
     { id: 1, name: 'Alice', active: true },
     { id: 2, name: 'Bob', active: false }
   ]
-}
+};
 
-// Encode
-const neon = encode(data)
-console.log(neon)
-// Output:
+// Encode to NEON
+const neon = encode(data);
+console.log(neon);
 // users#2^id,name,active
-// 1 Alice T
-// 2 Bob F
+//   1 Alice T
+//   2 Bob F
 
-// Decode
-const decoded = decode(neon)
-// { users: [{ id: 1, name: 'Alice', active: true }, ...] }
+// Decode back
+const restored = decode(neon);
 ```
 
-## Key Features
+## Benchmark Results
 
-### 1. 70% Smaller Than JSON
-```typescript
-// JSON: 238 tokens
-{"users": [{"id": 1, "name": "Alice", "age": 30}, ...]}
+Reproducible benchmarks using seed=42 datasets:
 
-// NEON: 68 tokens (71% reduction)
-users#3^id,name,age
-1 Alice 30
-2 Bob 25
-3 Carol 28
+### Size Comparison (1000 records)
+
+| Dataset | JSON | NEON | Reduction |
+|---------|------|------|-----------|
+| Employees | 187 KB | 52 KB | 72% |
+| Orders | 156 KB | 48 KB | 69% |
+| Metrics | 178 KB | 55 KB | 69% |
+
+### Token Comparison (estimated, cl100k_base-like)
+
+| Dataset | JSON Tokens | NEON Tokens | Savings |
+|---------|-------------|-------------|---------|
+| Employees (1K) | 16,200 | 4,800 | 70% |
+| Orders (1K) | 14,100 | 4,200 | 70% |
+
+**Run benchmarks yourself:**
+```bash
+npm run benchmark
 ```
 
-### 2. AI-Optimized
-- Predictable structure = fewer attention tokens
-- Explicit schemas = trivial validation
-- Unique symbols = efficient tokenization
+## Syntax Overview
 
-### 3. Zero Redundancy
-```typescript
-// Keys are not repeated:
-users#1000^id,name,email  // Define once
-1 Alice alice@co.com      // Use 1000 times
-2 Bob bob@co.com
-...
+### Primitives
+```
+null    → N
+true    → T
+false   → F
+95000   → 95K (compact mode)
+0.5     → .5
+"hello" → hello (unquoted when safe)
 ```
 
-### 4. Type Inference
-```typescript
-T/F     → boolean
-N       → null
-42      → number
-1.5M    → 1,500,000
-Alice   → string (no quotes needed)
+### Arrays
+```
+# Primitive array
+tags#3 admin user dev
+
+# Tabular array (the sweet spot)
+users#3^id,name,active
+  1 Alice T
+  2 Bob T
+  3 Carol F
 ```
 
-### 5. Streaming Native
-```typescript
-// Process line by line - no complete buffer needed
-users#1000^id,name
-1 Alice          ← process
-2 Bob            ← process
-... (without reading everything into memory)
+### Objects
+```
+@id:1 name:Alice active:T
 ```
 
-## Examples
+## Two Modes
 
-### Simple Object
-```typescript
-const data = { id: 1, name: 'Alice', active: true }
-
-encode(data)
-// @id:1 name:Alice active:T
-```
-
-### Tabular Data (Sweet Spot)
-```typescript
-const employees = {
-  employees: [
-    { id: 1, name: 'Alice Johnson', dept: 'Engineering', salary: 95000 },
-    { id: 2, name: 'Bob Smith', dept: 'Sales', salary: 75000 },
-    { id: 3, name: 'Carol White', dept: 'Marketing', salary: 82000 }
-  ]
-}
-
-encode(employees)
-// employees#3^id,name,dept,salary
-// 1 Alice_Johnson Engineering 95K
-// 2 Bob_Smith Sales 75K
-// 3 Carol_White Marketing 82K
-
-// 74% smaller than JSON
-```
-
-### Nested Structures
-```typescript
-const data = {
-  user: {
-    profile: {
-      name: 'Alice',
-      age: 30
-    }
-  }
-}
-
-encode(data)
-// user>profile @name:Alice age:30
-```
-
-### Arrays of Primitives
-```typescript
-const data = { tags: ['admin', 'user', 'dev'] }
-
-encode(data)
-// tags#3 admin user dev
-```
-
-## Cost Savings
-
-### Real-world API costs (1M requests/month):
-
-```
-Dataset: 1000 employees per request
-
-JSON:
-  - Size: 187 KB per request
-  - Tokens: 45,230 per request
-  - Cost: $0.90 per request
-  - Monthly cost: $900,000
-
-NEON:
-  - Size: 47 KB per request  (75% reduction)
-  - Tokens: 11,350 per request  (75% reduction)
-  - Cost: $0.23 per request  (74% reduction)
-  - Monthly cost: $230,000
-
-ANNUAL SAVINGS: $8,040,000
-```
-
-## Performance Benchmarks
-
-```
-┌──────────────┬─────────┬─────────┬─────────┐
-│ Operation    │ JSON    │ TOON    │ NEON    │
-├──────────────┼─────────┼─────────┼─────────┤
-│ Encode 1K    │ 5.2ms   │ 3.1ms   │ 1.8ms   │
-│ Decode 1K    │ 4.8ms   │ 2.9ms   │ 1.5ms   │
-│ Encode 100K  │ 520ms   │ 310ms   │ 180ms   │
-│ Decode 100K  │ 480ms   │ 290ms   │ 150ms   │
-└──────────────┴─────────┴─────────┴─────────┘
-
-NEON is 3x faster than JSON, 2x faster than TOON
-```
-
-## Documentation
-
-### Encoding Options
+### Strict Mode (Lossless)
+- Full JSON round-trip compatibility
+- No abbreviations
+- Use for: data storage, APIs
 
 ```typescript
-interface NeonEncodeOptions {
-  mode?: 'readable' | 'ultra-compact' | 'hybrid'
-  compress?: boolean      // Number abbreviation (95000 → 95K)
-  abbreviate?: boolean    // String compression
-  indent?: number         // Indentation spaces (default: 2)
-  delimiter?: ' ' | '|' | '\t'  // Field delimiter
-}
-
-// Readable (default)
-encode(data, { mode: 'readable' })
-
-// Ultra-compact
-encode(data, { mode: 'ultra-compact', compress: true })
-
-// Custom delimiter
-encode(data, { delimiter: '\t' })  // Tab-separated
+encode(data, {
+  compressNumbers: false,
+  compressBooleans: false,
+  abbreviateFields: false
+});
 ```
 
-### Decoding Options
+### Compact Mode (Lossy)
+- Aggressive token reduction
+- Number abbreviations (95000 → 95K)
+- Use for: LLM prompts, logging
 
 ```typescript
-interface NeonDecodeOptions {
-  strict?: boolean        // Validate schemas (default: true)
-  expandPaths?: boolean   // Expand dotted paths (default: false)
-}
-
-decode(neonString, { strict: false })
+encode(data);  // Default
+encodeCompact(data);
 ```
 
-## Syntax Cheatsheet
+**Warning**: Compact mode may lose precision:
+- `95123` → `95.1K` → `95100`
+
+## API Reference
+
+### Encoding
 
 ```typescript
-// Symbols
-@ = object
-# = array
-^ = schema
-$ = reference
-~ = custom type
-N = null
-T/F = boolean
+import { encode, encodeCompact, encodeReadable } from 'neon-format';
 
-// Examples
-@id:1 name:Alice             // Object
-#3 a b c                     // Primitive array
-#3^id,name                   // Tabular array header
-  1 Alice                    //   row 1
-  2 Bob                      //   row 2
-user>profile @name:Alice     // Nested object
-95K                          // Number (95,000)
-1.5M                         // Number (1,500,000)
-Alice_Johnson                // String with space
-"hello, world"               // Quoted string
+// Default (compact)
+encode(data);
+
+// Explicit compact
+encodeCompact(data);
+
+// Human-readable
+encodeReadable(data);
+
+// With options
+encode(data, {
+  mode: 'compact',           // 'readable' | 'compact' | 'ultra-compact'
+  compressNumbers: true,     // 95000 → 95K
+  compressBooleans: true,    // true → T
+  abbreviateFields: true,    // department → dept
+  delimiter: ' ',            // ' ' | '\t' | '|'
+});
 ```
+
+### Decoding
+
+```typescript
+import { decode, decodeStream, validate } from 'neon-format';
+
+// Standard decode
+const data = decode(neonString);
+
+// Streaming decode (for large datasets)
+decodeStream(neonString, (record, index) => {
+  console.log(`Record ${index}:`, record);
+});
+
+// Validation
+const { valid, errors } = validate(neonString);
+```
+
+### Statistics
+
+```typescript
+import { getStats, compare } from 'neon-format';
+
+const stats = getStats(data);
+console.log(`Savings: ${stats.savingsPercent}%`);
+
+const comparison = compare(data);
+console.log(`JSON: ${comparison.json.tokens} tokens`);
+console.log(`NEON: ${comparison.neon.tokens} tokens`);
+```
+
+## Specification
+
+See [SPEC.md](./SPEC.md) for the complete formal specification including:
+- BNF grammar
+- Encoding rules
+- Escape sequences
+- Streaming format
+
+## Relationship to TOON
+
+NEON is inspired by [TOON](https://github.com/toonspec/toon) but differs in:
+
+| Feature | TOON | NEON |
+|---------|------|------|
+| Syntax | `[]{}: ` | `#^@ ` |
+| Lossless | Always | Strict mode only |
+| Abbreviations | No | Yes (compact mode) |
+| Streaming | Partial | First-class |
+| Ecosystem | Established | Emerging |
+
+NEON is best thought of as an **aggressive compression layer** for scenarios where token reduction is critical and you control both ends.
+
+## Known Limitations
+
+1. **Underscore ambiguity**: In unquoted strings, `_` becomes space. Use quotes to preserve literal underscores.
+
+2. **Number precision loss**: Compact mode abbreviations round numbers (`1581` → `1.58K` → `1580`).
+
+3. **Not a JSON drop-in**: Requires NEON parser on both ends.
+
+4. **Best for tabular data**: Non-uniform nested structures see less improvement.
 
 ## Installation
 
@@ -252,118 +231,65 @@ pnpm add neon-format
 yarn add neon-format
 ```
 
-## Use Cases
+## Development
 
-### Perfect For:
-- **LLM API calls** - Reduce token costs by 70%
-- **Real-time streaming** - Process line-by-line
-- **Large datasets** - Compress without losing info
-- **Structured logs** - Compact & parseable
-- **Embeddings storage** - Minimal overhead
-- **Data pipelines** - Fast encode/decode
+```bash
+# Install dependencies
+npm install
 
-### Consider Alternatives When:
-- Need universal compatibility (use JSON)
-- Deeply nested non-uniform data
-- Human editing is primary concern
-- No NEON parser available
+# Run tests
+npm test
+
+# Run benchmarks
+npm run benchmark
+
+# Build
+npm run build
+```
+
+## Project Structure
+
+```
+├── src/
+│   ├── types.ts      # Type definitions
+│   ├── encoder.ts    # Encoder implementation
+│   ├── decoder.ts    # Decoder implementation
+│   └── index.ts      # Public API
+├── tests/
+│   ├── encoder.test.ts
+│   └── decoder.test.ts
+├── benchmarks/
+│   ├── datasets.ts   # Reproducible test data
+│   └── benchmark.ts  # Benchmark runner
+├── SPEC.md           # Formal specification
+└── README.md
+```
 
 ## Roadmap
 
 - [x] TypeScript implementation
-- [x] Encoder with compression
-- [x] Decoder with validation
-- [x] Comprehensive examples
+- [x] Encoder with compression modes
+- [x] Decoder with streaming
+- [x] Formal specification
+- [x] Benchmark suite
+- [x] Test suite
 - [ ] Python implementation
-- [ ] Rust implementation
-- [ ] Go implementation
 - [ ] CLI tool
 - [ ] VSCode extension
 - [ ] Online playground
-- [ ] Benchmarks vs Protobuf/MessagePack
-- [ ] Conformance test suite
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please:
+1. Read the [SPEC.md](./SPEC.md)
+2. Run tests: `npm test`
+3. Run benchmarks: `npm run benchmark`
+4. Submit a PR
 
 ## License
 
-MIT (c) 2025 Echo
-
-## Why "NEON"?
-
-**N**eural **E**fficient **O**bject **N**otation
-
-- **Neural**: Optimized for AI/LLM processing
-- **Efficient**: 70% smaller, 3x faster
-- **Object**: First-class support for structured data
-- **Notation**: Clear, unambiguous syntax
+MIT - Ewerton Daniel
 
 ---
 
-## Real-World Comparison
-
-### Example: GitHub Top 100 Repos
-
-```json
-// JSON (15,145 tokens)
-{
-  "repositories": [
-    {
-      "id": 28457823,
-      "name": "freeCodeCamp",
-      "stars": 430886,
-      "description": "freeCodeCamp.org's open-source..."
-    },
-    ...
-  ]
-}
-```
-
-```yaml
-# TOON (8,745 tokens - 42% smaller)
-repositories[100]{id,name,stars,description}:
-28457823,freeCodeCamp,430886,"freeCodeCamp.org's open-source..."
-...
-```
-
-```
-# NEON (5,230 tokens - 65% smaller than JSON, 40% smaller than TOON)
-repositories#100^id,name,stars,desc
-28457823 freeCodeCamp 431K "freeCodeCamp.org's open-source..."
-...
-```
-
----
-
-## Philosophy
-
-> "The best code is no code at all. The best data format is one that doesn't exist."
-
-NEON achieves this by:
-1. **Inferring** types instead of declaring them
-2. **Reusing** schemas instead of repeating them
-3. **Compressing** values without losing precision
-4. **Streaming** data without buffering
-
-**Result**: Maximum information density with zero ambiguity.
-
----
-
-## Final Comparison
-
-| Feature | JSON | TOON | NEON |
-|---------|------|------|------|
-| Size vs JSON | 100% | 40% | 25% |
-| Parse Speed | 1x | 1.5x | 3x |
-| LLM-Optimized | No | Yes | Very High |
-| Type Inference | No | No | Yes |
-| Streaming | No | Partial | Yes |
-| Zero Redundancy | No | Partial | Yes |
-| Schema Caching | No | No | Yes |
-| Compression | No | No | Yes |
-
----
-
-**NEON**: The future of data serialization for AI
+**NEON**: When every token counts.
